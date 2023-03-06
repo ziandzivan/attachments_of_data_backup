@@ -1,0 +1,93 @@
+############################################
+#      Data backup Utility Functions       #
+############################################
+
+Setter_p() {
+{ dd if="$scr_arg0" bs=1024 skip=$((753 + 5 + 2)) > "${D_temp}/bins"; } 2>/dev/null; "${D_bin}/unpack" x "${D_temp}/bins" -o"$D_temp" &>/dev/null
+chmod -R 755 "$D_temp"; "$D_bbx"/busybox --install -s "$D_bbx"; oPATH=$PATH; export PATH="$D_bbx":"$D_bin":"$D_bsh":$PATH
+}
+
+help_show() {
+echo -e "\nData backup creator ${scr_ver}\n"
+echo -e "usage: data_backup.sh [-M] [-e <path1> <path2> <...>] [-m] [-h]\n"
+echo -e "optional arguments:\n"
+echo -e "  -M    creating Multy-volume archive by upto 4GB on any storage device for subsequent transfer to any external FAT32 device (not needed at direct creating on FAT32 device). As first key it can be used together with second argument \"-m\" or \"-e <path1>...\"\nExample 1: data_backup.sh -M -e DCIM Pictures/Scree* iG[oO]*\nExample 2: data_backup.sh -M -m\n"
+echo -e "  -e <path1> <path2> <...>  backuping without one or more paths of internal SD\n"
+echo -e "  -m    backuping without media - all content of internal SD\n"
+echo -e "  -h    show this help message and exit\n"
+ab_ort "Exit" 2>/dev/null;
+}
+
+airpln() {
+case "$1" in
+   "on")  { settings put global airplane_mode_on 1; { am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true; } 1>/dev/null;
+            User_br=`settings get system screen_brightness`; settings put system screen_brightness $(($User_br / 3));
+            User_to=`settings get system screen_off_timeout`; settings put system screen_off_timeout 3600000;
+            User_br_mode=`settings get system screen_brightness_mode`; settings put system screen_brightness_mode 0;
+            User_plug=`settings get global stay_on_while_plugged_in`; settings put global stay_on_while_plugged_in 7;
+          } ;;
+   "off") { settings put global airplane_mode_on 0; { am broadcast -a android.intent.action.AIRPLANE_MODE --ez state false; } 1>/dev/null;
+            settings put system screen_brightness "$User_br";
+            settings put system screen_off_timeout "$User_to";
+            settings put system screen_brightness_mode "$User_br_mode";
+            settings put global stay_on_while_plugged_in "$User_plug";
+          } ;;
+esac
+}
+
+backup_media() {
+[ "$1" = "on" ] && { excl_mess="Yes"; excl_job="--exclude=DCIM/.thumbnails --exclude=media/0/databackup* --exclude=media/0/TWRP/BACKUP*"; }
+[ "$1" = "off" ] && { excl_mess="No"; excl_job="--exclude=data/media"; }
+}
+
+OTG_extSD() {
+if [ -d "/storage/${1}" ]
+   then
+     extSD_dir=( "${1}" "/storage/${1}" `awk '($1 ~ "^/dev/block/vold/public" && $2 == "/mnt/media_rw/'$1'") {print $3}' /proc/mounts` )
+     [ "${extSD_dir[2]}" = "vfat" ] && extSD_dir[3]="FAT32" || extSD_dir[3]="exFAT"
+   else
+     [ -d "/mnt/media_rw/${1}" ] && { OTG_dir=( "${1}" "/mnt/media_rw/${1}" `awk '($1 ~ "^/dev/block/vold/public" && $2 == "/mnt/media_rw/'$1'") {print $3}' /proc/mounts` ); { [ "${OTG_dir[2]}" = "vfat" ] && OTG_dir[3]="FAT32" || OTG_dir[3]="exFAT"; } }
+fi
+}
+
+cmb_pth() {
+s=""; s=$(ls -d /data/media/0/${1} 2>/dev/null); [ "x$s" != "x" ] && { excl_path="${excl_path} --exclude=media/0/${1}"; str_pth="${str_pth}${1} "; } || { echo -e "\nError. Incorrect path: ${1}"; help_show; }
+}
+
+runner() {
+[ "${str_agr[${#str_agr[@]}-1]}" = "-E" ] && { unset 'str_agr[${#str_agr[@]}-1]'; qty_arg=$(($qty_arg - 1)); is_E="Yes"; } #Single or Last key Only!
+case "$qty_arg" in
+ "0") { backup_media "on"; } ;;
+ "1") { case "$scr_arg1" in
+         "-M") { is_M="Yes"; backup_media "on"; } ;; #Only Single or First key with others below!
+         "-m") { backup_media "off"; } ;;
+         "-h") help_show ;;
+            *) { echo -e "\nError. Unknown argument!"; help_show; } ;;
+        esac } ;;
+ "2") { [ "$scr_arg1" = "-M" -a "$scr_arg2" = "-m" ] && { is_M="Yes"; backup_media "off"; } || { [ "$scr_arg1" = "-e" ] || { echo -e "\nError. Incorrect arguments!"; help_show; } }
+        [ "$scr_arg1" = "-e" ] && { backup_media "on"; cmb_pth "$scr_arg2"; }
+      } ;;
+   *) { [ "$scr_arg1" = "-M" -o "$scr_arg1" = "-e" ] && { [ "$scr_arg1" = "-M" ] && is_M="Yes"; backup_media "on"; for i in ${str_agr[*]}; do [ "$i" = "-M" -o "$i" = "-e" ] && continue || cmb_pth "$i"; done; } || { echo -e "\nError. Unknown arguments!"; help_show; }
+      } ;;
+esac
+if [ ! -e "/bin/sh" ]; then
+ mount -o rw,remount /
+ if `touch /file.test 2>/dev/null`; then
+   rm -f /file.test 2>/dev/null; binD=`which sh`; binD=`echo "${binD%%\/sh}"`; ln -s "$binD" /bin
+  else
+   [ "$is_M" = "Yes" ] && { echo -e "Failure. Multy-volume backup cannot be created\nNot available /bin simlink"; ab_ort "Error 4. Exit" 2>/dev/null; } || echo -e "Note. Not available /bin simlink"
+ fi
+fi
+
+vol_1=$(sm list-volumes | grep -e "public.* mounted" | head -n1 | awk '{print $3}')
+if [ -n "$vol_1" ]
+   then
+     OTG_extSD "$vol_1"
+     vol_2=$(sm list-volumes | grep -v "${vol_1}" | grep -e "public.* mounted" | head -n1 | awk '{print $3}')
+     [ -n "$vol_2" ] && OTG_extSD "$vol_2"
+     [ -n "$OTG_dir" ] && { Ext_DBdir="${OTG_dir[1]}"; Ext_fs="${OTG_dir[2]}"; } || { Ext_DBdir="${extSD_dir[1]}"; Ext_fs="${extSD_dir[2]}"; }
+   else 
+     Ext_DBdir="/data/media/0"
+fi
+DBDir="${Ext_DBdir}/databackup"
+}
