@@ -1,0 +1,14 @@
+#!/dev/temp/bsh/bash
+
+echo Finish of archive-file: $TAR_ARCHIVE
+Main_Name=`expr $TAR_ARCHIVE : '\(.*\)~.*'`
+
+case $TAR_SUBCOMMAND in
+ -c) ;;
+ -d|-x|-t) test -r $Main_Name~$TAR_VOLUME.tar || exit 1
+    ;;
+  *)       exit 1
+esac
+
+echo $Main_Name~$TAR_VOLUME.tar >&$TAR_FD
+echo Start of next volume $TAR_VOLUME archive-file: $Main_Name~$TAR_VOLUME.tar
