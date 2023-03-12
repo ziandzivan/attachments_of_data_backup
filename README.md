@@ -1,7 +1,7 @@
 # attachments_of_data_backup
 These are extracted attachments at working data_backup script
 
-Links:
+Credits, Links:
 
 https://github.com/Magisk-Modules-Repo/busybox-ndk
 
